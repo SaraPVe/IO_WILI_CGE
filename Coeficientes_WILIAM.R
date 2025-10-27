@@ -1,10 +1,14 @@
 install.packages("writexl")   # solo la primera vez
 library(writexl)
-
-write_xlsx(as.data.frame(W, stringsAsFactors = FALSE),
-           path = "Coeficientes_WILI.xlsx")
-
 library(openxlsx)
+
+# Cambia la ruta si no está en el working dir
+ruta_base <- "W.xlsx"
+hoja_base <- 1  # o "NombreDeHoja"
+
+Matriz_WILIAM <- read.xlsx(ruta_base, sheet = hoja_base, rowNames = TRUE)
+Matriz_WILIAM <- data.matrix(Matriz_WILIAM)
+
 # —————————————————————————————————————————————————————
 # 0) Helpers y definición de grupos (6 y 21 juntos)
 # —————————————————————————————————————————————————————
@@ -136,7 +140,7 @@ if (all_ok) {cat("\n🎉 Todos los checks PASAN (tol =", tol, ")\n")
 }else { cat("\n⚠️ Algunos checks FALLARON. Revisa los mensajes.\n")}
 
 # —————————————————————————————————————————————————————
-# 3) Exportación
+# 2) Exportación
 # —————————————————————————————————————————————————————
 write_xlsx(as.data.frame(W, stringsAsFactors = FALSE),
            path = "Coeficientes_WILI.xlsx")
