@@ -1,5 +1,26 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
 # IO_WILI_CGE
-Work for the PANTHEON project
+OBJETIVO:
+
+Soft link entre el CGE y el IAM. 
+
+Para eso:
+
+1.- Tienen que tener la misma desagregación de sectores ambas matrices, para eso se ha hecho la matriz con los pesos por sectores agregados: Coeficientes WILIAM
+Como este paso es vital, se ha generado un script de comprobación: Comprobaciones_WILI_CGE
+
+2.- Generar la tabla con las Z, para lo que se tiene que multiplicar la tabla de coeficientes WILIAM por la matriz A de UNIZAR: Matriz_A_PANTHEON
+Como este es vital, se ha generado un script de comprobación: Comprobaciones_Matriz_A_PANTHEON
+
+3.- En el modelo de WILIAM la IO entra en tres diferentes scripts, para los cuales, se necesita la IO (por lo que se multiplicará, la matriz por las Z): IO_PANTHEON
+Los ficheros que convierten la nueva IO en las import shares intermidiate y IS por origin  las tecnical coefficient total,m se encuentran en otro documento. UNIFICAR.
+
+
+- Explicación de los diferentes ficheros y scripts
 
 Preparación del entorno y carga de datos
 

@@ -1,0 +1,164 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\documentclass[
+]{article}
+\usepackage{xcolor}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math} % this also loads fontspec
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage{lmodern}
+\ifPDFTeX\else
+  % xetex/luatex font selection
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{graphicx}
+\makeatletter
+\newsavebox\pandoc@box
+\newcommand*\pandocbounded[1]{% scales image to fit in text height/width
+  \sbox\pandoc@box{#1}%
+  \Gscale@div\@tempa{\textheight}{\dimexpr\ht\pandoc@box+\dp\pandoc@box\relax}%
+  \Gscale@div\@tempb{\linewidth}{\wd\pandoc@box}%
+  \ifdim\@tempb\p@<\@tempa\p@\let\@tempa\@tempb\fi% select the smaller of both
+  \ifdim\@tempa\p@<\p@\scalebox{\@tempa}{\usebox\pandoc@box}%
+  \else\usebox{\pandoc@box}%
+  \fi%
+}
+% Set default figure placement to htbp
+\def\fps@figure{htbp}
+\makeatother
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\usepackage{bookmark}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same}
+\hypersetup{
+  hidelinks,
+  pdfcreator={LaTeX via pandoc}}
+
+\author{}
+\date{\vspace{-2.5em}}
+
+\begin{document}
+
+\section{IO\_WILI\_CGE}\label{io_wili_cge}
+
+OBJETIVO:
+
+Soft link entre el CGE y el IAM.
+
+Para eso:
+
+1.- Tienen que tener la misma desagregación de sectores ambas matrices,
+para eso se ha hecho la matriz con los pesos por sectores agregados:
+Coeficientes WILIAM Como este paso es vital, se ha generado un script de
+comprobación: Comprobaciones\_WILI\_CGE
+
+2.- Generar la tabla con las Z, para lo que se tiene que multiplicar la
+tabla de coeficientes WILIAM por la matriz A de UNIZAR:
+Matriz\_A\_PANTHEON Como este es vital, se ha generado un script de
+comprobación: Comprobaciones\_Matriz\_A\_PANTHEON
+
+3.- En el modelo de WILIAM la IO entra en tres diferentes scripts, para
+los cuales, se necesita la IO (por lo que se multiplicará, la matriz por
+las Z): IO\_PANTHEON Los ficheros que convierten la nueva IO en las
+import shares intermidiate y IS por origin las tecnical coefficient
+total,m se encuentran en otro documento. UNIFICAR.
+
+\begin{itemize}
+\tightlist
+\item
+  Explicación de los diferentes ficheros y scripts
+\end{itemize}
+
+Preparación del entorno y carga de datos
+
+\begin{verbatim}
+Instala (solo la primera vez) y carga las librerías writexl y openxlsx, necesarias para leer y escribir archivos de Excel en R.
+\end{verbatim}
+
+Define la ruta y hoja de cálculo que contienen la matriz original
+W.xlsx, la lee como data frame con nombres de fila, y la convierte a
+matriz numérica para facilitar los cálculos posteriores. 2. Limpieza de
+etiquetas y definición de grupos
+
+\begin{verbatim}
+Estandariza los nombres de filas y columnas eliminando espacios alrededor de guiones y extrayendo los identificadores numéricos que van al final de cada etiqueta (por ejemplo, “Sector-21” → id 21).
+\end{verbatim}
+
+Crea cinco subgrupos B1--B5 para ciertos sectores subdivididos,
+destacando que B5 agrupa conjuntamente a los sectores con id 6 y 21. A
+partir de esos subgrupos deriva dos conjuntos de índices:
+
+\begin{verbatim}
+A, los sectores no subdivididos;
+
+C2 (equivalente a todos los B), los sectores subdivididos que requieren un tratamiento especial.
+\end{verbatim}
+
+Define un helper get\_grp\_indices que, dado un índice de fila o
+columna, devuelve los índices que pertenecen al mismo subgrupo B; si no
+pertenece a ninguno, indica que está en A. 3. Construcción de la matriz
+de coeficientes W
+
+\begin{verbatim}
+Inicializa una matriz cuadrada W (mismas dimensiones y etiquetas que la original) llena de NA y recorre todas las combinaciones fila/columna para poblarla siguiendo reglas de normalización específicas según si la fila/columna pertenece a A o a alguno de los subgrupos B.
+
+    A×A: fija los coeficientes a 1 (identidad).
+
+    A×C2: normaliza cada entrada dividiéndola por la suma de la fila correspondiente restringida a las columnas subdivididas.
+
+    B×A: normaliza por la suma de la columna dentro del subgrupo de la fila.
+
+    B×B: normaliza por la suma total del bloque definido por los subgrupos de fila y columna.
+
+    En cualquier otra combinación asigna NA.
+\end{verbatim}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{3}
+\item
+  Chequeos de calidad
+
+  Ejecuta comprobaciones dinámicas para verificar que las
+  normalizaciones cumplen con las reglas esperadas: identidad en A×A,
+  sumas unitarias por fila (A×C2), por columna dentro de cada subgrupo
+  (B×A) y por bloque entre subgrupos (B×B). Si detecta desviaciones
+  mayores que la tolerancia 1e-8, informa los errores; en caso
+  contrario, confirma que todos los chequeos pasaron.
+\item
+  Exportación
+
+  Convierte la matriz W en data frame y la guarda en un nuevo archivo
+  Coeficientes\_WILI.xlsx, produciendo la versión normalizada de los
+  coeficientes lista para su uso posterior.
+\end{enumerate}
+
+\end{document}
