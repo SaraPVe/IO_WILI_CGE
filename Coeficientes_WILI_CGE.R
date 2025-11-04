@@ -143,4 +143,4 @@ if (all_ok) {cat("\n🎉 Todos los checks PASAN (tol =", tol, ")\n")
 # 2) Exportación
 # —————————————————————————————————————————————————————
 write_xlsx(as.data.frame(W, stringsAsFactors = FALSE),
-           path = "Coeficientes_WILI.xlsx")
+           path = "Coeficientes_WILI_CGE.xlsx")
