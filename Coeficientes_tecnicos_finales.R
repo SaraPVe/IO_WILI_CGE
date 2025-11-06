@@ -1,0 +1,190 @@
+# ====== Paquete para Excel ======
+# install.packages("openxlsx")
+library(openxlsx)
+
+# ====== Helpers de nombres ======
+clean_names <- function(x){
+  x <- trimws(x)
+  x <- gsub("\\.-\\.", "-", x)
+  x <- gsub("\\s*-\\s*", "-", x)
+  x <- gsub("[–—−]", "-", x)
+  toupper(x)
+}
+country_key <- function(x){ toupper(gsub("\\s+","", x)) }   # país sin espacios, en mayúsculas
+extract_id  <- function(x) as.integer(sub(".*-(\\d+)$", "\\1", x))
+country_of  <- function(x) sub("-\\d+$", "", x)
+
+# ====== 0) Lee UNIZAR: valores (sheet 1), países (sheet 3), orden sectores (sheet 2) ======
+unizar_path <- "data_UNIZAR.xlsx"
+
+# Sheet 1: matriz 48*n × 48*n sin nombres
+data_unizar <- read.xlsx(unizar_path, sheet = 1, colNames = FALSE, rowNames = FALSE)
+data_unizar <- data.matrix(data_unizar)
+
+# Sheet 3: orden de países
+sheet2 <- read.xlsx(unizar_path, sheet = 3, colNames = FALSE)
+col2   <- sheet2[[ which.max(colSums(!is.na(sheet2))) ]]
+country_order_raw <- col2[!is.na(col2) & nzchar(col2)]
+country_order <- country_key(country_order_raw)
+
+# Sheet 2: orden de sectores padres (IDs 1..48 en el orden real)
+sheet3 <- read.xlsx(unizar_path, sheet = 2, colNames = FALSE)
+sec3   <- sheet3[[ which.max(colSums(!is.na(sheet3))) ]]
+sector_ids <- as.integer(sec3[!is.na(sec3)])
+stopifnot(length(sector_ids) == 48)
+
+# Construye nombres PAIS-<idPadre> para data_unizar
+names48 <- unlist(lapply(country_order, function(cc) paste0(cc, "-", sector_ids)))
+stopifnot(nrow(data_unizar) == length(names48), ncol(data_unizar) == length(names48))
+rownames(data_unizar) <- names48
+colnames(data_unizar) <- names48
+
+# ====== 1) Alinea W a ese orden de países ======
+# (W ya en memoria, 62×62 por país)
+rownames(W) <- clean_names(rownames(W))
+colnames(W) <- clean_names(colnames(W))
+stopifnot(nrow(W) == ncol(W))
+
+codes62 <- rownames(W)
+ctry62  <- country_of(codes62)
+ctrys_W <- unique(ctry62)
+
+# deben coincidir (como conjunto) con los del Excel
+stopifnot(setequal(ctrys_W, country_order))
+
+# reordena bloques de 62 al orden de country_order
+idx_order_62 <- unlist(lapply(country_order, function(cc) which(ctry62 == cc)))
+W <- W[idx_order_62, idx_order_62]
+# renueva auxiliares
+codes62 <- rownames(W)
+ctry62  <- country_of(codes62)
+ids62   <- extract_id(codes62)
+
+# --- block_map EXACTO (tal como lo has indicado) ---
+block_map <- list(
+  `5`  = 9:17,
+  `37` = 50:51,
+  `39` = 47:49,
+  `45` = 58:62,
+  `8`  = c(6,21),
+  `34` = 43,
+  `7`  = 5
+)
+
+# ====== 2) Construye RES (35*62 x 35*62) usando TODOS los pares de países ======
+# Arreglo clave: usar sector_ids -> posición en Z (no asumir 1:48)
+build_RES_all_pairs <- function(W, data_unizar, block_map, sector_ids){
+  .clean <- function(v){ toupper(gsub("\\s*-\\s*","-", gsub("\\.-\\.","-", trimws(v)))) }
+  .id <- function(x) as.integer(sub(".*-(\\d+)$","\\1", x))
+  .ct <- function(x) sub("-\\d+$","", x)
+  
+  # Limpia y valida nombres
+  rownames(W) <- .clean(rownames(W));   colnames(W) <- .clean(colnames(W))
+  rownames(data_unizar) <- .clean(rownames(data_unizar)); colnames(data_unizar) <- .clean(colnames(data_unizar))
+  stopifnot(nrow(W)==ncol(W), nrow(data_unizar)==ncol(data_unizar))
+  
+  # Países e ids
+  codesW <- rownames(W); ctryW <- .ct(codesW)
+  codesZ <- rownames(data_unizar); ctryZ <- .ct(codesZ)
+  ctriesW <- unique(ctryW); ctriesZ <- unique(ctryZ)
+  stopifnot(setequal(ctriesW, ctriesZ))
+  
+  # Resultado global 2170×2170
+  RES <- matrix(0, nrow(W), ncol(W), dimnames = dimnames(W))
+  
+  # Helper: hijos en 62 para un padre p (1..48)
+  child_idx <- function(p, idsW_vec){
+    Hp <- block_map[[as.character(p)]]
+    if (is.null(Hp)) Hp <- p
+    which(idsW_vec %in% Hp)
+  }
+  
+  # Tabla de índices por país
+  extract_id <- function(x) as.integer(sub(".*-(\\d+)$","\\1", x))
+  idxW_by_ctry <- lapply(ctriesW, function(cc) which(ctryW == cc)); names(idxW_by_ctry) <- ctriesW
+  idxZ_by_ctry <- lapply(ctriesW, function(cc) which(ctryZ == cc)); names(idxZ_by_ctry) <- ctriesW
+  idsW_by_ctry <- lapply(ctriesW, function(cc) extract_id(rownames(W)[ idxW_by_ctry[[cc]] ]))
+  
+  # Mapa ID padre -> POSICIÓN en Z según sector_ids (hoja 2)
+  stopifnot(length(sector_ids) == 48)
+  posZ_map <- setNames(seq_along(sector_ids), sector_ids)  # p.ej. posZ_map["5"] = posición de 5 en Z
+  
+  # === Diagnóstico previo (rápido): debe haber no-ceros en Z y en W por lo menos en un país ===
+  anyZ <- any(data_unizar != 0, na.rm=TRUE)
+  anyW <- any(W != 0, na.rm=TRUE)
+  if (!anyZ) stop("Diagnóstico: data_unizar es toda ceros tras la lectura/nombre.")
+  if (!anyW) stop("Diagnóstico: W es toda ceros tras la reordenación.")
+  
+  # Recorre TODOS los pares de países (mismo y cruzados)
+  for (cc_r in ctriesW) {
+    iWr <- idxW_by_ctry[[cc_r]]                 # filas 62 del país A en W
+    idsW_r <- idsW_by_ctry[[cc_r]]              # ids hijos 1..62 del país A
+    Hp_list_r <- vector("list", 48)
+    for (p in 1:48) Hp_list_r[[p]] <- child_idx(p, idsW_r)
+    
+    for (cc_c in ctriesW) {
+      iWc <- idxW_by_ctry[[cc_c]]               # columnas 62 del país B en W
+      iZr <- idxZ_by_ctry[[cc_r]]
+      iZc <- idxZ_by_ctry[[cc_c]]
+      Zbloc <- data_unizar[iZr, iZc, drop=FALSE]   # 48×48 en el orden de sector_ids
+      if (all(Zbloc == 0)) next
+      
+      idsW_c <- idsW_by_ctry[[cc_c]]
+      Hq_list_c <- vector("list", 48)
+      for (q in 1:48) Hq_list_c[[q]] <- child_idx(q, idsW_c)
+      
+      Rrc <- matrix(0, 62, 62)
+      Wrc <- W[iWr, iWc, drop=FALSE]
+      
+      # recorre TODOS los padres por ID (1..48) pero leyendo Z en su POSICIÓN real pr,qc
+      for (p in 1:48) {
+        Hp <- Hp_list_r[[p]]; if (!length(Hp)) next
+        pr <- posZ_map[as.character(p)]                # posición real de p en Zbloc
+        z_row <- Zbloc[pr, , drop=TRUE]                # fila de Z del padre p (posición)
+        nzq_pos <- which(z_row != 0)
+        if (!length(nzq_pos)) next
+        for (q_pos in nzq_pos) {
+          id_q <- sector_ids[q_pos]                    # posición -> ID de padre q
+          Hq <- Hq_list_c[[id_q]]; if (!length(Hq)) next
+          esc <- z_row[q_pos]
+          Rrc[Hp, Hq] <- Rrc[Hp, Hq] + esc * Wrc[Hp, Hq]
+        }
+      }
+      
+      RES[iWr, iWc] <- RES[iWr, iWc] + Rrc
+    }
+  }
+  
+  # Diagnóstico post: mira un bloque mapeado típico si existe (p=5→9:17)
+  # (no rompe si falta, solo informa)
+  try({
+    cc1 <- ctriesW[1]
+    iW1 <- idxW_by_ctry[[cc1]]
+    idsW1 <- idsW_by_ctry[[cc1]]
+    Hp5 <- which(idsW1 %in% (block_map[["5"]] %||% 5))
+    if (length(Hp5)) {
+      sum_block <- sum(RES[iW1, iW1][Hp5, Hp5])
+      message(sprintf("Diagnóstico: suma bloque p=5 (%s) = %.6f", cc1, sum_block))
+    }
+  }, silent = TRUE)
+  
+  RES
+}
+
+# Operador %||% por si acaso
+`%||%` <- function(a,b) if (is.null(a)) b else a
+
+# === Ejecuta la construcción global ===
+RES <- build_RES_all_pairs(W, data_unizar, block_map, sector_ids)
+
+# === (Opcional) Exportar con la estructura de W ===
+if (requireNamespace("openxlsx", quietly = TRUE)) {
+  RES_export <- RES[rownames(W), colnames(W), drop = FALSE]
+  openxlsx::write.xlsx(
+    x = as.data.frame(RES_export),
+    file = "Resultado_62x62_global.xlsx",
+    rowNames = TRUE,
+    overwrite = TRUE
+  )
+  cat("✔ Exportado con openxlsx → Resultado_62x62_global.xlsx (orden como W)\n")
+}
