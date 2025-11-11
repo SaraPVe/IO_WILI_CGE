@@ -1,53 +1,134 @@
-# —————————————————————————————————————————————————————
-# CHEQUEOS de normalización (dinámicos)
-# —————————————————————————————————————————————————————
-tol <- 1e-8
-all_ok <- TRUE
+# === Helpers para la normalización de la matriz W ===
 
-# 2.a) A×A == 1
-if (!all(W[A, A, drop=FALSE] == 1)) {
-  cat("✖ Error en A×A (identidad)\n"); all_ok <- FALSE
-} else cat("✔ A×A OK\n")
-
-# 2.b) A×C2: cada fila i en A (con flujo a C2) suma 1 sobre C2
-rs_AC2 <- sapply(A, function(i) {
-  d <- sum(Matriz_WILIAM[i, C2])
-  if (d == 0) return(NA_real_)
-  sum(W[i, C2], na.rm=TRUE)
-})
-for (k in which(!is.na(rs_AC2))) {
-  if (abs(rs_AC2[k] - 1) > tol) {
-    cat(sprintf("✖ A×C2 fila %s suma=%.6f\n", codes[A[k]], rs_AC2[k])); all_ok <- FALSE
-  }
+# Función para limpiar nombres
+clean_names <- function(x){
+  x <- trimws(x)
+  x <- gsub("\\.-\\.", "-", x)  # Corrige las expresiones regulares
+  x <- gsub("\\s*-\\s*", "-", x)  # Elimina los espacios antes/después de los guiones
+  x <- gsub("[–—−]", "-", x)  # Reemplaza otros tipos de guiones por "-"
+  toupper(x)  # Convierte todo a mayúsculas
 }
-cat("✔ A×C2 comprobado\n")
 
-# 2.c) Bx×A: para cada subgrupo, columnas j en A suman 1
-for (nm in names(B_groups)) {
-  grp_pos <- which(ids %in% B_groups[[nm]])
-  for (j in A) {
-    d <- sum(Matriz_WILIAM[grp_pos, j])
-    if (d == 0) next
-    s <- sum(W[grp_pos, j], na.rm=TRUE)
-    if (abs(s-1) > tol) {
-      cat(sprintf("✖ %s×A col %s suma=%.6f\n", nm, codes[j], s)); all_ok <- FALSE
+# Funciones para extraer la información de países y sectores
+country_of  <- function(x) sub("-\\d+$", "", x)
+extract_id  <- function(x) as.integer(sub(".*-(\\d+)$", "\\1", x))
+canon_country <- function(x){ x <- clean_names(x); gsub("[^A-Z0-9]", "", x) }
+
+# Grupos definidos (según canvas)
+G5  <- 9:17
+G39 <- 47:49
+G37 <- 50:51
+G6_21 <- c(6, 21)  # Subgrupo especial
+B_base <- c(1:8, 18:46, 52:62)  # Sectores normales (de acuerdo a tu definición)
+groups <- list(G5 = G5, G39 = G39, G37 = G37, G6_21 = G6_21)
+
+# Carga matrices (W0 original y W1 normalizada)
+W0 <- as.matrix(read.xlsx("W.xlsx", sheet = 1, colNames = TRUE, rowNames = TRUE))
+W1 <- as.matrix(read.xlsx("W_WILI_CGE.xlsx", sheet = 1, colNames = TRUE, rowNames = TRUE))
+
+# Índices de países y sectores
+rn <- clean_names(rownames(W0)); cn <- clean_names(colnames(W0))
+ct_r <- canon_country(country_of(rn)); ct_c <- canon_country(country_of(cn))
+ids_r <- extract_id(rn); ids_c <- extract_id(cn)
+countries <- unique(ct_r)
+idxWr_by <- setNames(lapply(countries, function(cc) which(ct_r == cc)), countries)
+idxWc_by <- setNames(lapply(countries, function(cc) which(ct_c == cc)), countries)
+
+# Tolerancias para los errores
+eps <- 1e-8
+tol <- 1e-12
+
+# Comprobación por celdas de la matriz
+check_normalized_matrix <- function(W_normalized, W_original, groups, eps = 1e-8) {
+  
+  n_ctry <- length(unique(extract_id(rownames(W_normalized))))
+  result <- data.frame(country_r = character(), country_c = character(), row_id = integer(), col_id = integer(), result = character())
+  
+  for (k in 1:n_ctry) {
+    for (l in 1:n_ctry) {
+      # Extrae los índices de fila y columna por país
+      iR <- idxWr_by[[k]]
+      iC <- idxWc_by[[l]]
+      Wkl_normalized <- W_normalized[iR, iC, drop = FALSE]
+      Wkl_original <- W_original[iR, iC, drop = FALSE]
+      
+      # Recorre todas las celdas de la submatriz correspondiente
+      for (r in 1:length(iR)) {
+        for (c in 1:length(iC)) {
+          r_id <- extract_id(rownames(W_normalized)[iR[r]])
+          c_id <- extract_id(colnames(W_normalized)[iC[c]])
+          
+          # Verifica si las filas y las columnas son normales o pertenecen a un subgrupo especial
+          g_row <- names(Filter(function(g) r_id %in% g, groups))
+          g_col <- names(Filter(function(g) c_id %in% g, groups))
+          
+          # Caso 1: Si la fila y la columna pertenecen a un subgrupo especial, se usa la matriz cuadrada
+          if (length(g_row) && length(g_col) && g_row == g_col) {
+            Sg <- sum(Wkl_original[which(ids_r %in% groups[[g_row]]), 
+                                   which(ids_c %in% groups[[g_col]])])
+            if (abs(Sg) > eps) {
+              expected_value <- Wkl_original[r, c] / Sg
+              if (abs(expected_value - 1) > eps) {
+                result <- rbind(result, data.frame(country_r = rownames(W_normalized)[iR[r]], 
+                                                   country_c = colnames(W_normalized)[iC[c]], 
+                                                   row_id = r_id, col_id = c_id, 
+                                                   result = sprintf("Matriz cuadrada no normalizada correctamente: Expected %.12f, Got %.12f", 1, expected_value)))
+              }
+            }
+          }
+          
+          # Caso 2: Si la fila es normal y la columna es especial, se debe normalizar verticalmente
+          if (!length(g_row) && length(g_col)) {
+            g <- groups[[g_col]]
+            RR <- which(ids_r %in% g)
+            Sc <- sum(Wkl_original[RR, c], na.rm = TRUE)
+            if (abs(Sc) > eps) {
+              expected_value <- Wkl_original[r, c] / Sc
+              if (abs(expected_value - 1) > eps) {
+                result <- rbind(result, data.frame(country_r = rownames(W_normalized)[iR[r]], 
+                                                   country_c = colnames(W_normalized)[iC[c]], 
+                                                   row_id = r_id, col_id = c_id, 
+                                                   result = sprintf("Normalización vertical incorrecta: Expected %.12f, Got %.12f", 1, expected_value)))
+              }
+            }
+          }
+          
+          # Caso 3: Si la columna es normal y la fila es especial, se debe normalizar horizontalmente
+          if (length(g_row) && !length(g_col)) {
+            g <- groups[[g_row]]
+            CC <- which(ids_c %in% g)
+            Sr <- sum(Wkl_original[r, CC], na.rm = TRUE)
+            if (abs(Sr) > eps) {
+              expected_value <- Wkl_original[r, c] / Sr
+              if (abs(expected_value - 1) > eps) {
+                result <- rbind(result, data.frame(country_r = rownames(W_normalized)[iR[r]], 
+                                                   country_c = colnames(W_normalized)[iC[c]], 
+                                                   row_id = r_id, col_id = c_id, 
+                                                   result = sprintf("Normalización horizontal incorrecta: Expected %.12f, Got %.12f", 1, expected_value)))
+              }
+            }
+          }
+        }
+      }
     }
   }
-}
-cat("✔ Bx×A comprobado\n")
-
-# 2.d) Bx×By: cada bloque suma 1
-for (g1 in names(B_groups)) {
-  grp1_pos <- which(ids %in% B_groups[[g1]])
-  for (g2 in names(B_groups)) {
-    grp2_pos <- which(ids %in% B_groups[[g2]])
-    total <- sum(W[grp1_pos, grp2_pos], na.rm=TRUE)
-    if (abs(total - 1) > tol) {
-      cat(sprintf("✖ %s×%s suma bloque=%.6f\n", g1, g2, total)); all_ok <- FALSE
-    }
+  
+  if (nrow(result) == 0) {
+    cat("Todos los cheques pasados correctamente. La normalización está correcta.\n")
+  } else {
+    cat("Errores encontrados en la normalización. Revisa los resultados.\n")
   }
+  
+  return(result)
 }
-cat("✔ Bx×By comprobado\n")
 
-if (all_ok) {cat("\n🎉 Todos los checks PASAN (tol =", tol, ")\n")
-}else { cat("\n⚠️ Algunos checks FALLARON. Revisa los mensajes.\n")}
+# Ejecutamos la comprobación con la matriz normalizada
+result_check <- check_normalized_matrix(W1, W0, groups)
+
+# Mostrar los resultados
+if (nrow(result_check) > 0) {
+  print(result_check)
+} else {
+  cat("Todo parece correcto en la normalización.\n")
+}
+

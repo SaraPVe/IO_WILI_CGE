@@ -1,0 +1,32 @@
+Ordenes a ChatGPT para Coeficintes_WILI_CGE 
+
+1. primer bloque de columnas (columna (por pais)) de los sectores del 1 al 8 del 18 al 46 y del 52 al 62 
+1.1 si las filas coincide con el sector del 1 al 8, del 18 al 46 o del 52 al 62, quiero que lo dividas entre el mismo (de manera que quede uno) 
+1.2 en el caso de que sea los sectores del 9 al 17, el 47 al 49 o el 50 y 51, quiero que cojas y hagas el valor del sector 9 entre el sumatorio 
+de los sectores del 9 al 17, en el caso del 47 al 49, cada sector entre la suma de los tres sectores (47,48,49) y en el caso del 50 y 51 entonces 
+cada sector entre el sumatorio de ambos, es decir, las frecuencias relativas de cada grupo de sectores 
+
+2. segundo bloque de columnas de 9 a 17, de 47 al 49 y de 50-51 
+2.1 en los sectores de las filas del 1 al 9, del 18 al 46 y del 52 al 62 quiero que me hagas la frecuencia relativa por filas de esos sectores 
+2.2 en el caso de los valores de las filas del 9 al 17 y de las filas 47-49 y 50-51 entonces quiero la fracción de cada celda,  sobre el total de celdas 
+
+Ordenes a ChatGPT para Coeficientes_técnicos finales
+
+1.En el caso de que el padre (Matriz_unizar), no sea ni 5,7,8,34,37,39,45, entonces simplemente se multiplica el padre (matriz_unizar) por el hijo (W) y se deja en la posición que tuviese
+
+2. En el caso de que la columna/fila sea el 7 o el 34,
+2.1 Primero se cambia en la matriz RES (la matriz final), la columna/fila 7 del padre por el la del 5 del hijo y en el caso de la 34 se cambia por la columna/fila de la 43
+2.2 Entonces, se multiplica por el valor del hijo (w) y se deja en las nuevas posiciones
+
+3. En el caso de que sea la columna 5, 8, 37,39,45,
+2.1 Si la fila no es la 5, 8, 37,39,45, entonces multiplico La columna 5 (celda a celda) del padre por el vector del hijo 9 al 17 y lo coloco en las columnas los sectores del 9 al 17 de la matriz RES(la matriz final). 
+En el caso del 8, 37,39,45 es igual pero con el c(6,21), c(50,51), c(47,48,49) y c(58 al 62) respectivamente
+2.2 Si la fila es 5, 8, 37,39,45 entonces, en el caso del sector 5, multiplico por la matriz que se forma en los sectores del 9 al 17, ocupando cada valor el (p,q) del hijo, es decir la posicion de W(9,9)=RES (9,9)
+Igual con 8, 37,39,45 es igual pero con el c(6,21), c(50,51), c(47,48,49) y c(58 al 62) respectivamente
+2.3 en el caso de que coincida una columna 5, 8, 37,39,45 con otra, pero no ella misma, es decir, la columna 5 con la fila 8, entonces se suman los dos valores de los hijos (matriz_W) y se dividen entre la cantidad total de 
+hijos que haya y e multiplica entonces sY SOLO ENTONCES por el padre (mtriz_UNIZAR)
+3. En el caso de que sea la fila 5, 8, 37,39,45 si la fila no es 5, 8, 37,39,45, entonecs multiplico La fila 5 (celda a celda) del padre por el vector del hijo 9 al 17 y lo coloco en las filas los sectores del 9 al 17 de la matriz RES(la matriz final). 
+En el caso del 8, 37,39,45 es igual pero con el c(6,21), c(50,51), c(47,48,49) y c(58 al 62) respectivamente
+
+todo esto es independientemente del pais
+
