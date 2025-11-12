@@ -1,113 +1,187 @@
-# === Helpers (mismos que usas en tus scripts) ===
+# ============================================================
+# DESAGREGACIÓN: M_unizar (48×48 por país) × W_norm (62×62 por país)
+# Regla clave (como pediste): PRIMERO MULTIPLICAR, DESPUÉS COLOCAR
+#   • A[r,c] (padre, 48×48) se multiplica por W_norm[Sr,Sc]
+#   • El resultado se coloca en RES[Dr,Dc]
+#
+# Mapeos de sectores (ORIGEN y DESTINO):
+#   EXPANSIONES  : 5→9:17 ; 8→{6,21} ; 37→{50,51} ; 39→{47,48,49} ; 45→{58:62}
+#   REMAPEOS     : 7→5 (sin expandir) ; 34→43 (sin expandir)
+#   NORMALES     : p→p
+# ============================================================
+
+suppressPackageStartupMessages({ library(openxlsx) })
+
+# ---------------- Helpers robustos de nombres/ids ----------------
 clean_names <- function(x){
   x <- trimws(x)
-  x <- gsub("\\.-\\.","-",x)  # Corrige la expresión regular
-  x <- gsub("\\s*-\\s*","-",x)  # Elimina los espacios antes/después de los guiones
-  x <- gsub("[–—−]", "-", x)  # Reemplaza otros tipos de guiones por "-"
-  toupper(x)  # Convierte todo a mayúsculas
+  x <- gsub("\\.-\\.", "-", x)        # ".-." → "-"
+  x <- gsub("\\s*-\\s*", "-", x)      # quita espacios alrededor de '-'
+  x <- gsub("[–—−]", "-", x)            # guiones raros → '-'
+  x <- gsub("_", "-", x)                # admite "PAIS_7" → "PAIS-7"
+  toupper(x)
+}
+country_of   <- function(x) sub("[-_]\\d+$", "", x)
+extract_id   <- function(x) as.integer(sub(".*[-_](\\d+)$", "\\1", x))
+canon_country<- function(x){ x <- clean_names(x); gsub("[^A-Z0-9]", "", x) }
+
+# ---------------- Grupos y mapeos ----------------
+EXPAND_CHILDREN <- list(
+  `5`  = 9:17,
+  `8`  = c(6,21),
+  `37` = 50:51,
+  `39` = 47:49,
+  `45` = 58:62
+)
+
+source_set <- function(p){
+  ch <- EXPAND_CHILDREN[[as.character(p)]]
+  if (!is.null(ch)) return(ch)
+  if (p == 7)  return(7L)   # sin expansión
+  if (p == 34) return(34L)  # sin expansión
+  p
 }
 
-country_of  <- function(x) sub("-\\d+$", "", x)
-extract_id  <- function(x) as.integer(sub(".*-(\\d+)$", "\\1", x))
-canon_country <- function(x){ x <- clean_names(x); gsub("[^A-Z0-9]", "", x) }
+dest_set <- function(p){
+  ch <- EXPAND_CHILDREN[[as.character(p)]]
+  if (!is.null(ch)) return(ch)
+  if (p == 7)  return(5L)   # recoloca en 5
+  if (p == 34) return(43L)  # recoloca en 43
+  p
+}
 
-# === Carga matrices ===
-W0 <- as.matrix(read.xlsx("W.xlsx", sheet = 1, colNames = TRUE, rowNames = TRUE))
-W1 <- as.matrix(read.xlsx("W_WILI_CGE.xlsx", sheet = 1, colNames = TRUE, rowNames = TRUE))
+# ---------------- Lectura nombrada de UNIZAR ----------------
+# path: Excel con Sheet1=valores 48*n × 48*n, Sheet3=listado países (sin cabecera, 1ª col)
+load_unizar_named <- function(path, sheet_values=1, sheet_countries=3){
+  A <- as.matrix(read.xlsx(path, sheet = sheet_values, colNames = FALSE, rowNames = FALSE))
+  ctab <- read.xlsx(path, sheet = sheet_countries, colNames = FALSE)
+  # toma la primera columna no vacía
+  col_ix <- which.max(colSums(!is.na(ctab)))
+  countries <- clean_names(ctab[[col_ix]][!is.na(ctab[[col_ix]]) & nzchar(ctab[[col_ix]])])
+  n_ctry <- length(countries); n_sec <- 48
+  if (!all(dim(A) == c(n_ctry*n_sec, n_ctry*n_sec))){
+    stop(sprintf("Sheet1 debe ser %dx%d, recibido %dx%d",
+                 n_ctry*n_sec, n_ctry*n_sec, nrow(A), ncol(A)))
+  }
+  rn <- paste0(rep(countries, each = n_sec), "-", rep(1:n_sec, times = n_ctry))
+  rownames(A) <- rn; colnames(A) <- rn
+  list(M_unizar = A, countries = countries)
+}
 
-# === Cargar M_unizar desde la tercera hoja ===
-M_unizar <- read.xlsx("data_unizar.xlsx", sheet = 3)  # Leer solo la tercera hoja
-countries_unizar <- M_unizar[[1]]  # Los países están en la primera columna
-sectors_unizar <- 1:48  # Los sectores son del 1 al 48
-M_unizar <- as.matrix(M_unizar[, -1])  # Eliminar la primera columna (de países) y mantener los datos de la matriz
-
-# Limpiar los nombres de países
-countries_unizar <- clean_names(countries_unizar)
-
-# === Índices ===
-rn <- clean_names(rownames(W0)); cn <- clean_names(colnames(W0))
-stopifnot(identical(rn, clean_names(rownames(W1))), identical(cn, clean_names(colnames(W1))))
-ct_r <- canon_country(country_of(rn)); ct_c <- canon_country(country_of(cn))
-ids_r <- extract_id(rn); ids_c <- extract_id(cn)
-countries <- unique(ct_r)
-idxWr_by <- setNames(lapply(countries, function(cc) which(ct_r == cc)), countries)
-idxWc_by <- setNames(lapply(countries, function(cc) which(ct_c == cc)), countries)
-
-# === Conjuntos y parámetros ===
-B_base <- c(1:8, 18:46, 52:62)  # Sectores normales
-G5  <- 9:17                      # Grupo 5 (especial)
-G39 <- 47:49                      # Grupo 39 (especial)
-G37 <- 50:51                      # Grupo 37 (especial)
-groups <- list(G5=G5, G39=G39, G37=G37)
-eps <- 1e-8                       # Umbral para la normalización
-tol <- 1e-12                       # Tolerancia para las comparaciones
-
-# === Función para desagregar y aplicar las reglas de normalización ===
-normalize_W_res <- function(W0, W_norm, M_unizar) {
+# ---------------- Función principal: multiplicar y recolocar ----------------
+UNIZAR_times_W <- function(W_norm, M_unizar){
+  # Limpieza/validación de nombres
+  rnW <- clean_names(rownames(W_norm)); cnW <- clean_names(colnames(W_norm))
+  rnA <- clean_names(rownames(M_unizar)); cnA <- clean_names(colnames(M_unizar))
+  if (anyNA(rnW) || anyNA(cnW) || anyNA(rnA) || anyNA(cnA))
+    stop("Faltan nombres tipo 'PAIS-<id>' en W_norm o M_unizar.")
+  
+  idW_r <- extract_id(rnW); idW_c <- extract_id(cnW)
+  idA_r <- extract_id(rnA); idA_c <- extract_id(cnA)
+  if (anyNA(idW_r) || anyNA(idW_c) || anyNA(idA_r) || anyNA(idA_c))
+    stop("No se pudieron extraer ids numéricos de nombres.")
+  
+  ctW_r <- canon_country(country_of(rnW)); ctW_c <- canon_country(country_of(cnW))
+  ctA_r <- canon_country(country_of(rnA)); ctA_c <- canon_country(country_of(cnA))
+  
+  countries <- unique(ctW_r)
+  if (!setequal(unique(ctW_r), unique(ctW_c))) stop("Países filas/cols en W no coinciden.")
+  if (!setequal(unique(ctA_r), unique(ctA_c))) stop("Países filas/cols en UNIZAR no coinciden.")
+  if (!setequal(unique(ctW_r), unique(ctA_r)))  stop("Países de W y UNIZAR no coinciden (canonizados).")
+  
+  # Índices por país
+  idxWr_by <- setNames(lapply(countries, function(cc) which(ctW_r == cc)), countries)
+  idxWc_by <- setNames(lapply(countries, function(cc) which(ctW_c == cc)), countries)
+  idxAr_by <- setNames(lapply(countries, function(cc) which(ctA_r == cc)), countries)
+  idxAc_by <- setNames(lapply(countries, function(cc) which(ctA_c == cc)), countries)
+  
+  # Mapas id→posición dentro de cada bloque país
+  posW_row_by_id <- vector("list", length(countries))
+  posW_col_by_id <- vector("list", length(countries))
+  posA_row_by_id <- vector("list", length(countries))
+  posA_col_by_id <- vector("list", length(countries))
+  
+  for (k in seq_along(countries)){
+    iWr <- idxWr_by[[k]]; iWc <- idxWc_by[[k]]
+    iAr <- idxAr_by[[k]]; iAc <- idxAc_by[[k]]
+    
+    idsW_block_r <- idW_r[iWr]; idsW_block_c <- idW_c[iWc]
+    idsA_block_r <- idA_r[iAr]; idsA_block_c <- idA_c[iAc]
+    
+    if (!setequal(sort(idsW_block_r), 1:62) || !setequal(sort(idsW_block_c), 1:62))
+      stop("Bloque W país ", countries[k], " no contiene todos los ids 1..62.")
+    if (!setequal(sort(idsA_block_r), 1:48) || !setequal(sort(idsA_block_c), 1:48))
+      stop("Bloque UNIZAR país ", countries[k], " no contiene todos los ids 1..48.")
+    
+    posW_row_by_id[[k]] <- match(1:62, idsW_block_r)
+    posW_col_by_id[[k]] <- match(1:62, idsW_block_c)
+    posA_row_by_id[[k]] <- match(1:48, idsA_block_r)
+    posA_col_by_id[[k]] <- match(1:48, idsA_block_c)
+  }
+  
   n_ctry <- length(countries)
-  RES_global <- matrix(0, nrow=62 * n_ctry, ncol=62 * n_ctry)  # Iniciar la matriz final
+  RES_global <- matrix(0, nrow = 62*n_ctry, ncol = 62*n_ctry)
   
-  for (k in 1:n_ctry) {
-    for (l in 1:n_ctry) {
-      for (r in B_base) {  # Sectores normales, se dejan igual
-        for (c in B_base) {
-          RES_global[r, c] <- M_unizar[r, c] * W_norm[r, c]  # Multiplicamos por W_norm
-        }
-      }
-    }
-  }
-  
-  # === Desagregación para sectores especiales ===
-  for (k in 1:n_ctry) {
-    for (l in 1:n_ctry) {
-      for (r in groups$G5) {  # Si la fila pertenece al grupo G5
-        for (c in B_base) {  # Si la columna es normal
-          if (r == 5) {
-            RES_global[r, c] <- M_unizar[r, c] * W_norm[9:17, 9:17]  # Multiplicar por la fracción de W_norm
-          }
+  # ============= Bucle principal por pares de países =============
+  for (k in seq_along(countries)){
+    iWr <- idxWr_by[[k]]; iAr <- idxAr_by[[k]]
+    posWr <- posW_row_by_id[[k]]; posAr <- posA_row_by_id[[k]]
+    
+    for (l in seq_along(countries)){
+      iWc <- idxWc_by[[l]]; iAc <- idxAc_by[[l]]
+      posWc <- posW_col_by_id[[l]]; posAc <- posA_col_by_id[[l]]
+      
+      Wkl <- W_norm[iWr, iWc, drop = FALSE]
+      Akl <- M_unizar[iAr, iAc, drop = FALSE]
+      
+      RESkl <- matrix(0, nrow = 62, ncol = 62)
+      
+      # Recorre todos los padres r,c en 1..48
+      for (r in 1:48){
+        pr <- posAr[r]
+        Sr_ids <- source_set(r); Dr_ids <- dest_set(r)
+        Sr <- posWr[Sr_ids];     Dr <- posWr[Dr_ids]
+        if (is.na(pr) || anyNA(Sr) || anyNA(Dr)) stop("Índices fila inválidos en país ", countries[k])
+        
+        for (c in 1:48){
+          pc <- posAc[c]
+          Sc_ids <- source_set(c); Dc_ids <- dest_set(c)
+          Sc <- posWc[Sc_ids];     Dc <- posWc[Dc_ids]
+          if (is.na(pc) || anyNA(Sc) || anyNA(Dc)) stop("Índices columna inválidos en país ", countries[l])
+          
+          a <- Akl[pr, pc]
+          if (a == 0) next
+          
+          # 1) MULTIPLICAR en ORIGEN
+          block_val <- a * Wkl[Sr, Sc, drop = FALSE]
+          
+          # 2) COLOCAR en DESTINO
+          if (length(Sr) != length(Dr) || length(Sc) != length(Dc))
+            stop("Dimensiones origen/destino no compatibles en r=", r, ", c=", c)
+          
+          RESkl[Dr, Dc] <- RESkl[Dr, Dc] + block_val
         }
       }
       
-      # Casos similares para los demás grupos G39 y G37
-      for (r in groups$G39) {  # Si la fila pertenece al grupo G39
-        for (c in B_base) {
-          if (r == 39) {
-            RES_global[r, c] <- M_unizar[r, c] * W_norm[47:49, 47:49]
-          }
-        }
-      }
-      
-      for (r in groups$G37) {  # Si la fila pertenece al grupo G37
-        for (c in B_base) {
-          if (r == 37) {
-            RES_global[r, c] <- M_unizar[r, c] * W_norm[50:51, 50:51]
-          }
-        }
-      }
+      # Vuelca el bloque (k,l)
+      RES_global[iWr, iWc] <- RESkl
     }
   }
   
-  # === Intersecciones entre sectores especiales (5 con 8, etc.) ===
-  for (k in 1:n_ctry) {
-    for (l in 1:n_ctry) {
-      for (r in groups$G5) {  # Si la fila pertenece al grupo G5
-        for (c in groups$G5) {  # Si la columna pertenece al grupo G5
-          if (r != c) {
-            RES_global[r, c] <- (W_norm[r, c] + W_norm[c, r]) / length(groups$G5) * M_unizar[r, c]
-          }
-        }
-      }
-      # Se puede repetir el mismo proceso para los otros grupos (G39 y G37)
-    }
-  }
-  
-  # === Devuelve la matriz final ===
-  return(RES_global)
+  rownames(RES_global) <- rnW
+  colnames(RES_global) <- cnW
+  RES_global
 }
 
-# === Ejecuta la normalización ===
-W_norm_res <- normalize_W_res(W0, W1, M_unizar)
+# ---------------- Ejecución de ejemplo ----------------
+# 1) Carga W_norm (62×62 * por país) con nombres tipo "PAIS-<id>"
+W_norm <- as.matrix(read.xlsx("W_normalizada.xlsx", sheet = 1, colNames = TRUE, rowNames = TRUE))
+rownames(W_norm) <- clean_names(rownames(W_norm)); colnames(W_norm) <- clean_names(colnames(W_norm))
 
-# === Comprobación de ceros y fracciones ===
-cat("Ceros en la matriz original (W): ", sum(W0 == 0), "\n")
-cat("Ceros en la matriz normalizada (W_norm): ", sum(W_norm_res == 0), "\n")
+# 2) Carga UNIZAR y asígnale nombres por bloques PAIS-1..PAIS-48
+unz <- load_unizar_named("data_unizar.xlsx", sheet_values = 1, sheet_countries = 3)
+M_unizar <- unz$M_unizar
+
+# 3) Construye RES (62*n × 62*n) y guarda
+RES <- UNIZAR_times_W(W_norm, M_unizar)
+# openxlsx::write.xlsx(as.data.frame(RES), "RES_desagregado.xlsx", rowNames = TRUE, overwrite = TRUE)

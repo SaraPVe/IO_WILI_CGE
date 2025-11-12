@@ -180,5 +180,3 @@ W_norm <- normalize_W_global(W)
 openxlsx::write.xlsx(as.data.frame(W_norm), file = "W_normalizada.xlsx",
                      rowNames = TRUE, overwrite = TRUE)
 
-cat("Listo: 'W_normalizada.xlsx' generado.
-")
