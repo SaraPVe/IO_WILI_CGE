@@ -132,3 +132,32 @@ if (nrow(result_check) > 0) {
   cat("Todo parece correcto en la normalización.\n")
 }
 
+# Función para convertir NA en cero
+convert_NA_to_zero <- function(matrix) {
+  matrix[is.na(matrix)] <- 0
+  return(matrix)
+}
+
+# Convertir los NA en cero en las matrices original y normalizada
+W0_clean <- convert_NA_to_zero(W0)
+W1_clean <- convert_NA_to_zero(W1)
+
+# Comparar los ceros en la matriz original y en la normalizada
+zeros_original <- sum(W0_clean == 0, na.rm = TRUE)  # Número de ceros en la matriz original
+zeros_normalized <- sum(W1_clean == 0, na.rm = TRUE)  # Número de ceros en la matriz normalizada
+
+cat("Número de ceros en la matriz original (W0):", zeros_original, "\n")
+cat("Número de ceros en la matriz normalizada (W1):", zeros_normalized, "\n")
+
+# Comparar las ubicaciones de los ceros en ambas matrices
+matching_zeros <- sum(W0_clean == 0 & W1_clean == 0, na.rm = TRUE)  # Ceros comunes en ambas matrices
+cat("Ceros que coinciden en ambas matrices:", matching_zeros, "\n")
+
+# Opcional: Mostrar las posiciones donde las matrices tienen ceros diferentes
+different_zeros <- which(W0_clean == 0 & W1_clean != 0 | W0_clean != 0 & W1_clean == 0, arr.ind = TRUE)
+if (length(different_zeros) > 0) {
+  cat("Posiciones con ceros diferentes entre las matrices:\n")
+  print(different_zeros)
+} else {
+  cat("No hay diferencias en los ceros entre las matrices.\n")
+}
