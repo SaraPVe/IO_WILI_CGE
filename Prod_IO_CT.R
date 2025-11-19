@@ -1,4 +1,4 @@
-# Variante Rafa: hacer una tabla con los sectores que sirva de nexo para unizar y wili
+# Propuesta RM: hacer una tabla con los sectores que sirva de nexo para unizar y wili
 
 library(openxlsx)
 library(tidyverse)
@@ -7,7 +7,7 @@ library(tidyverse)
 # CARGAR Y LIMPIAR UNIZAR -------------
 
 M_unizar <- read.xlsx("data_unizar.xlsx", sheet = 3)  # Leer solo la tercera hoja
-countries_unizar <- c("AUSTRIA", M_unizar[[1]])  # Los países están en la primera columna
+countries_unizar <- c("AUSTRIA", M_unizar[[1]])  # Los países están en la primera columna (soy un poco tonta y falta austria)
 names_unizar <- expand.grid(as.character(1:48), countries_unizar) |> rename(in_sec_uz = Var1, in_cou = Var2)
 
 # meter la matriz tocha
@@ -23,7 +23,7 @@ colnames(unizar_m) <- colnames_unizar$colnames_unizar
 unizar_done <- cbind(names_unizar, unizar_m)
 
 # pivorar a lo largo: (todo menos las dos primeras columnas (que son los nombres de paises y sectores))
-# despues separo los nombres de las columnas y convierto los sectores en caractteres par ahacer bien el join despues
+# despues separo los nombres de las columnas y convierto los sectores en caracteres par ahacer bien el join despues
 unizar_pivot <- unizar_done |> 
   pivot_longer(-c(1,2), names_to = "tmp", values_to = "unizar_values") |> 
   separate(tmp, into = c("out_sec_uz", "out_cou"), sep = "_") |> #este paso toma bastante tiempo,  buscar forma más eficiente
@@ -55,7 +55,7 @@ load("./Data_CT/wiliam_pivot.RData")
 #**MWMWMWMWMMWMWMWMWMMWMWMWMWMMWMWMWMWMMWMWMWMWMMWMWMWMWMMWMWMWMWM
 # UNIRLAS TABLAS POR FIN ----------------------
 
-# limiar todo menos mis dos matrices pivotadas
+# limpiar todo menos mis dos matrices pivotadas
 rm(list = setdiff(ls(), c("wiliam_pivot", "unizar_pivot")))
 
 # la tabla nexo
@@ -76,8 +76,8 @@ b = distinct(sector_join |> select(code_wi)|> arrange(code_wi))
 a == b
 
 
-# hago la union de la tabla nexo con la de wiliam. Uno primero los setores IN y despues OUT
-# importante le cambio el nombre  para que esté acode
+# union de la tabla nexo con la de wiliam. Uno primero los setores IN y despues OUT
+# importante le cambio el nombre  para que esté acorde
 wiliam_join <- wiliam_pivot |> 
   left_join(sector_join |> rename(in_sec_uz = code_za), by = c("in_sec_wi" = "code_wi")) |> 
   left_join(sector_join |> rename(out_sec_uz = code_za), by = c("out_sec_wi" = "code_wi"))
@@ -85,7 +85,7 @@ wiliam_join <- wiliam_pivot |>
 # ahora que tiene bien el nexo, procedo a attach la matriz
 # con el full_join me aseguro de que "duplican" los valores de zar para que no queden huecos libres 
 # en la matriz final ( que debe tener el tamaño de wili)
-# para que se una tiene qie cumpler que sean iguales: pais de entrada, salida, y los sectores de entrada y salida de unizar
+# para que se una tiene que cumplir que sean iguales: pais de entrada, salida, y los sectores de entrada y salida de unizar
 
   wiliam_unizar <- wiliam_join |> 
     full_join(unizar_pivot,
@@ -96,7 +96,7 @@ wiliam_join <- wiliam_pivot |>
   load("./Data_CT/wiliam_unizar.RData")
 
 
-# ahora calculo el prodcuto (wiliam_values * unizar_values)
+# ahora calculo el producto (wiliam_values * unizar_values)
 # limpio la matriz y la preparo para su pivote
 # y la pivoto a lo ancho
 wiliam_wide_c <- wiliam_unizar |> 
@@ -107,10 +107,4 @@ wiliam_wide_c <- wiliam_unizar |>
   pivot_wider(names_from = "outsecou", values_from = "values")
 
 save(wiliam_wide_c, file = "./Data_CT/wiliam_wide_c.RData")
-# write.xlsx(wiliam_wide_c, "IO_wiliam_rafa.xlsx")
-
-
-
-
-
-
+# write.xlsx(wiliam_wide_c, "IO_wiliam.xlsx")
