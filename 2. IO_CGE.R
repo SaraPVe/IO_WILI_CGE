@@ -3,8 +3,8 @@
 ##############################################
 
 # Instalar solo la primera vez (si no las tienes)
-install.packages("openxlsx")
-install.packages("tidyverse")
+#install.packages("openxlsx")
+#install.packages("tidyverse")
 
 library(openxlsx)
 library(tidyverse)
@@ -63,6 +63,6 @@ print(summary(as.vector(IO_unizar)))
 
 # Ojo: un objeto de 1680x1680 puede pesar bastante en Excel,
 # pero en principio openxlsx lo aguanta.
-write.xlsx(IO_unizar, file = "IO_unizar.xlsx", colnames= FALSE, rownames =FALSE )
+write.xlsx(IO_unizar, file = "IO_unizar.xlsx", colnames= FALSE)
 
 cat("\n✅ IO_unizar creada y guardada como 'IO_unizar.xlsx'\n")

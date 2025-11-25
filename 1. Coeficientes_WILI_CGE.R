@@ -10,7 +10,7 @@
 #  - Especial×Normal: vector vertical   (filas del grupo / columna normal)
 #  - Manejo seguro de denominadores (si suma==0, se deja 0)
 # ============================================================
-
+install.packages("openxlsx")
 suppressPackageStartupMessages({library(openxlsx)})
 
 # ---------------- Helpers de nombres e ids ----------------
