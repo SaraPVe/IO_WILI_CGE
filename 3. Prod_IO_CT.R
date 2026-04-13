@@ -221,3 +221,7 @@ wiliam_wide_c <- wiliam_unizar |>
 
 save(wiliam_wide_c, file = "./Data_CT/wiliam_wide_c.RData")
 write.xlsx(wiliam_wide_c, "IO_wiliam.xlsx")
+
+#guardar excel comprobaciones 
+IO_wiliam<-readxl::read_xlsx("IO_wiliam.xlsx")
+save(IO_wiliam, file="Data_CT/IO_wiliam.RData")

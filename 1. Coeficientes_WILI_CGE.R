@@ -179,4 +179,3 @@ W_norm <- normalize_W_global(W)
 # 3) Exporta resultado
 openxlsx::write.xlsx(as.data.frame(W_norm), file = "W_normalizada.xlsx",
                      rowNames = TRUE, overwrite = TRUE)
-
