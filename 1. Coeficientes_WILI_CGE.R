@@ -10,7 +10,9 @@
 #  - Especial×Normal: vector vertical   (filas del grupo / columna normal)
 #  - Manejo seguro de denominadores (si suma==0, se deja 0)
 # ============================================================
-install.packages("openxlsx")
+if (!requireNamespace("openxlsx", quietly = TRUE)) {
+  stop("Falta el paquete 'openxlsx'. Instalala con install.packages('openxlsx') antes de ejecutar este script.")
+}
 suppressPackageStartupMessages({library(openxlsx)})
 
 # ---------------- Helpers de nombres e ids ----------------
@@ -179,3 +181,5 @@ W_norm <- normalize_W_global(W)
 # 3) Exporta resultado
 openxlsx::write.xlsx(as.data.frame(W_norm), file = "W_normalizada.xlsx",
                      rowNames = TRUE, overwrite = TRUE)
+
+source("Diagnostico_negativos_W.R")
