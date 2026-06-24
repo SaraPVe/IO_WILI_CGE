@@ -1,0 +1,10 @@
+.args <- commandArgs(trailingOnly = FALSE)
+.file_arg <- grep("^--file=", .args, value = TRUE)
+.this_file <- if (length(.file_arg)) sub("^--file=", "", .file_arg[[1]]) else file.path(getwd(), "scripts", "run_all.R")
+SCRIPT_DIR <- dirname(normalizePath(.this_file, mustWork = FALSE))
+
+source(file.path(SCRIPT_DIR, "01_normalize_w.R"))
+source(file.path(SCRIPT_DIR, "02_build_io_unizar.R"))
+source(file.path(SCRIPT_DIR, "06_export_data_unizar.R"))
+source(file.path(SCRIPT_DIR, "03_build_io_wiliam.R"))
+source(file.path(SCRIPT_DIR, "04_validate_pipeline.R"))
