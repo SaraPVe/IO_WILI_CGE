@@ -40,14 +40,15 @@ con Z, X, VA e Y de 105 columnas. Se usan las mismas tolerancias de
 denominador que en el cierre anterior (1e-12 para TC y BIS y 1e-9 para
 BISO).
 
-## Trade con demanda final
+## Demanda final en el Excel de coeficientes
 
-Usar Python con NumPy y lxml. El exportador lee el RDS de la entrega,
-el `Trade.xlsx` original del modelo y la hoja `MRIO_original` como
-referencia para el desglose histórico.
+Después de generar los coeficientes, usar Python con NumPy y lxml para
+completar ese mismo libro. El exportador lee el RDS de la entrega,
+los rangos del `Trade.xlsx` original del modelo y la hoja `MRIO_original`
+como referencia para el desglose histórico.
 
 ```powershell
-python scripts/integrar_trade_unizar.py --mrio resultados/unizar_entrega_20261125/MRIO62_entrega_UNIZAR.rds --trade referencias/Trade.xlsx --referencia-y 'entradas/Calculos limpio MRIO_JN.xlsx' --salida resultados/trade_unizar_20261125
+python scripts/integrar_trade_unizar.py --mrio resultados/unizar_entrega_20261125/MRIO62_entrega_UNIZAR.rds --trade referencias/Trade.xlsx --referencia-y 'entradas/Calculos limpio MRIO_JN.xlsx' --coeficientes resultados/unizar_entrega_20261125/Coeficientes_intermedios.xlsx
 ```
 
 Se interpreta `y` como bloques en el orden de las 35 regiones del
@@ -65,13 +66,13 @@ Se usan las cuotas de los valores históricos del mismo signo en cada
 cruce producto, origen y destino. Donde ese perfil es cero, se asigna el
 grupo completo a hogares o a formación bruta de capital fijo. Para
 capital negativo sin perfil se usan existencias. Al reagrupar se
-recuperan los importes de la entrega. El CSV de controles registra los
+recuperan los importes de la entrega. La hoja `CONTROLES` registra los
 importes asignados por defecto y las participaciones fuera de rango.
 
-La copia `Trade.xlsx` contiene los 62 usos intermedios y los seis finales
-en `BASE_Import_shares_UNIZ` y `EXO_Import_origin_shares_UNIZ`. Los rangos
-nombrados se conservan. El código 25 usa la etiqueta metales básicos en
-las hojas UNIZ. Se conservan los signos. El cálculo mantiene la
+El Excel reúne TC en `TC_62` y los 62 usos intermedios y seis finales en
+`BIS_62` y `BISO_62`. Los nombres de los rangos `_UNIZ` de Trade apuntan
+a estas dos hojas. El código 25 usa la etiqueta metales básicos. Se
+conservan los signos. El cálculo mantiene la
 valoración de los flujos entregados. Para los parámetros a precios de
 comprador hacen falta los flujos de UNIZAR a esa valoración o un puente
 de precios específico. `PP_to_BP.xlsx` conserva su función aparte.

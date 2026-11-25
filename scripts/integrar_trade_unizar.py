@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 from zipfile import ZipFile
+from xml.sax.saxutils import escape
 
 from lxml import etree as ET
 import numpy as np
@@ -199,14 +200,148 @@ def export(template, output, bis, biso):
                     shutil.copyfileobj(original,updated,2**20)
 
 
+def column_name(index):
+    name=''
+    index+=1
+    while index:
+        index,digit=divmod(index-1,26)
+        name=chr(65+digit)+name
+    return name
+
+
+def extend_shares(original, output, values, first):
+    columns=[column_name(j) for j in range(first,first+6)]
+    added_width=(f'<col min="{first+1}" max="{first+6}" width="30" '
+                 'hidden="0" customWidth="1"/>').encode()
+    added=0
+    buffer=b''
+    while block:=original.read(2**20):
+        parts=(buffer+block).split(b'</row>')
+        buffer=parts.pop()
+        for part in parts:
+            match=ROW.search(part)
+            if match:
+                row=int(match[1])
+                if row==1:
+                    part=re.sub(rb'<dimension ref="[^"]*"\s*/>',
+                                f'<dimension ref="A1:{columns[-1]}{len(values)+1}"/>'.encode(),part,count=1)
+                    part=part.replace(b'</cols>',added_width+b'</cols>',1)
+                    if part.count(b'<c ')!=first:
+                        raise ValueError('Las hojas deben contener los 62 usos intermedios de la entrega.')
+                    cells=[f'<c r="{col}1" s="1" t="inlineStr"><is><t>{escape(label)}</t></is></c>'
+                           for col,label in zip(columns,FINAL)]
+                elif 2<=row<=len(values)+1:
+                    cells=[f'<c r="{col}{row}" t="n"><v>{value:.17g}</v></c>'
+                           for col,value in zip(columns,values[row-2])]
+                    added+=1
+                else:
+                    cells=[]
+                part+=''.join(cells).encode()
+            output.write(part+b'</row>')
+    output.write(buffer)
+    if added!=len(values):
+        raise ValueError('Faltan filas al insertar la demanda final.')
+
+
+def workbook_with_trade_ranges(data, trade):
+    lookup={'BASE_Import_shares_UNIZ':'BIS_62','EXO_Import_origin_shares_UNIZ':'BISO_62'}
+    book=ET.fromstring(data)
+    names=book.find(NS+'definedNames')
+    if names is None:
+        names=ET.Element(NS+'definedNames')
+        book.insert(book.index(book.find(NS+'sheets'))+1,names)
+    existing={item.get('name') for item in names}
+    counts={name:0 for name in lookup.values()}
+    source=ET.fromstring(trade.read('xl/workbook.xml'))
+    for item in source.iter(NS+'definedName'):
+        name=item.get('name','')
+        if not name.startswith('BASE_IMPORT_SHARES_') or not name.endswith('_UNIZ'):
+            continue
+        sheet,_,address=(item.text or '').partition('!')
+        if sheet not in lookup:
+            continue
+        if name in existing or not re.fullmatch(r'\$[A-Z]+\$\d+:\$[A-Z]+\$\d+',address):
+            raise ValueError(f'Rango inesperado o ya presente: {name}')
+        # Trade starts on row 5 and the coefficient sheets start on row 2.
+        adjusted=re.sub(r'\$(\d+)',lambda value:f'${int(value[1])-3}',address)
+        ET.SubElement(names,NS+'definedName',name=name).text=f'{lookup[sheet]}!{adjusted}'
+        existing.add(name)
+        counts[lookup[sheet]]+=1
+    if counts!={'BIS_62':70,'BISO_62':4340}:
+        raise ValueError(f'Conjunto inesperado de rangos de Trade: {counts}')
+    return ET.tostring(book,encoding='UTF-8',xml_declaration=True,standalone=True)
+
+
+def inline_text(cell, text):
+    cell.set('t','inlineStr')
+    for child in list(cell):
+        cell.remove(child)
+    ET.SubElement(ET.SubElement(cell,NS+'is'),NS+'t').text=text
+
+
+def update_method(data):
+    root=ET.fromstring(data)
+    rows=root.find(NS+'sheetData')
+    inline_text(rows.find(f"{NS}row[@r='6']").find(f"{NS}c[@r='B6']"),
+                'La Y de UNIZAR se lee por región en orden hogares, gobierno y formación de capital. El desglose a seis usos se estima con el perfil histórico de WILIAM del mismo signo y conserva los totales originales.')
+    inline_text(rows.find(f"{NS}row[@r='7']").find(f"{NS}c[@r='B7']"),
+                'TC incluye 62 usos intermedios. BIS y BISO incluyen además seis usos finales a la valoración de la entrega. La referencia a precios de comprador requiere un puente de precios específico. Se conservan los signos.')
+    return ET.tostring(root,encoding='UTF-8',xml_declaration=True,standalone=True)
+
+
+def append_controls(data, audit):
+    root=ET.fromstring(data)
+    rows=root.find(NS+'sheetData')
+    start=max(int(row.get('r')) for row in rows)+1
+    for r,(label,value) in enumerate(audit,start):
+        row=ET.SubElement(rows,NS+'row',r=str(r),ht='34',customHeight='1')
+        inline_text(ET.SubElement(row,NS+'c',r=f'A{r}',s='2'),label)
+        cell=ET.SubElement(row,NS+'c',r=f'B{r}',s='2',t='n')
+        ET.SubElement(cell,NS+'v').text=format(value,'.17g')
+    root.find(NS+'dimension').set('ref',f'A1:B{start+len(audit)-1}')
+    return ET.tostring(root,encoding='UTF-8',xml_declaration=True,standalone=True)
+
+
+def integrate(coefficients, template, output, bis, biso, audit):
+    with ZipFile(coefficients) as source, ZipFile(template) as trade, ZipFile(output,'x') as target:
+        changes={sheet_path(source,'BIS_62'):(bis[:,62:],64),sheet_path(source,'BISO_62'):(biso[:,62:],65)}
+        method=sheet_path(source,'METODO')
+        controls=sheet_path(source,'CONTROLES')
+        for member in source.infolist():
+            with source.open(member) as original, target.open(member,'w') as updated:
+                if member.filename in changes:
+                    extend_shares(original,updated,*changes[member.filename])
+                elif member.filename=='xl/workbook.xml':
+                    updated.write(workbook_with_trade_ranges(original.read(),trade))
+                elif member.filename==method:
+                    updated.write(update_method(original.read()))
+                elif member.filename==controls:
+                    updated.write(append_controls(original.read(),audit))
+                else:
+                    shutil.copyfileobj(original,updated,2**20)
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mrio',type=Path,required=True)
     parser.add_argument('--trade',type=Path,default=Path('referencias/Trade.xlsx'))
     parser.add_argument('--referencia-y',type=Path,default=Path('entradas/Calculos limpio MRIO_JN.xlsx'))
-    parser.add_argument('--salida',type=Path,required=True)
+    mode=parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--salida',type=Path,help='Carpeta para generar un Trade independiente')
+    mode.add_argument('--coeficientes',type=Path,help='Excel de coeficientes donde incorporar la demanda final')
     parser.add_argument('--rscript',default='Rscript')
     args=parser.parse_args()
+    if args.coeficientes:
+        with tempfile.TemporaryDirectory(dir=args.coeficientes.parent) as directory:
+            scratch=Path(directory)
+            z,y=read_delivery(args.rscript,args.mrio,scratch)
+            final,allocation=distribute(y,history(args.referencia_y))
+            bis,biso,controls=shares(z,final)
+            totals=[('Demanda final UNIZAR de tres usos',y.sum()),('Demanda final desglosada en seis usos',final.sum())]
+            updated=scratch/args.coeficientes.name
+            integrate(args.coeficientes,args.trade,updated,bis,biso,totals+allocation+controls)
+            updated.replace(args.coeficientes)
+        return
     args.salida.mkdir(parents=True,exist_ok=True)
     output=args.salida/'Trade.xlsx'
     audit=args.salida/'Controles_demanda_final.csv'
