@@ -899,12 +899,12 @@ convert_intermediate_AX <- function(z48,x48,mapping,weights,x_reference, fallbac
     weight_error=weight_error,z_error=z_error,x_error=x_error)
 }
 
-calculate_intermediate_coefficients <- function(z,x,sector_labels=CLASE$sectors) {
+calculate_intermediate_coefficients <- function(z,x,sector_labels=CLASE$sectors,tc_tol=0,bis_tol=0,biso_tol=0) {
   if(!identical(dim(z),c(2170L,2170L)) || length(x)!=2170L ||
      any(!is.finite(z)) || any(!is.finite(x)) || any(x<0))stop("Z/X intermedias invalidas.")
   numerator <- rowsum(z,rep(1:62,35))
   t <- sweep(numerator,2,x,"/")
-  empty <- x==0
+  empty <- x<=tc_tol
   t[,empty] <- 0
   impossible <- which(empty & colSums(abs(numerator))>0)
   if(length(impossible))t[,impossible]<-NA_real_
@@ -916,10 +916,10 @@ calculate_intermediate_coefficients <- function(z,x,sector_labels=CLASE$sectors)
     m <- z[rows,cols,drop=FALSE]
     imported <- colSums(m[-destination,,drop=FALSE]);domestic<-m[destination,];total<-imported+domestic
     row <- (destination-1)*62+product
-    ok<-total!=0;bis[row,ok]<-imported[ok]/total[ok]
+    ok<-abs(total)>bis_tol;bis[row,ok]<-imported[ok]/total[ok]
     domestic_share<-rep(0,62);domestic_share[ok]<-domestic[ok]/total[ok]
     bis_error<-max(bis_error,abs(bis[row,]+domestic_share-as.numeric(ok)))
-    origins<-matrix(0,35,62);ok_import<-imported!=0
+    origins<-matrix(0,35,62);ok_import<-abs(imported)>biso_tol
     origins[,ok_import]<-sweep(m[,ok_import,drop=FALSE],2,imported[ok_import],"/")
     origins[destination,]<-0
     biso_error<-max(biso_error,abs(colSums(origins)-as.numeric(ok_import)))
@@ -987,7 +987,7 @@ write_intermediate_results <- function(origin,converted,coefficients,mapping,fil
         "Ventas y compras de cada hijo siguen su cuota de produccion. VA e y se distribuyen por esas mismas cuotas dentro de cada padre.",
         "En la fuente, Z mas VA reproduce X por columna. La entrega no trae desglose separado de impuestos.",
         "Se guardan las 105 columnas de y en el RDS con identificador posicional. La entrega carece de una clave para convertirlas en los seis usos finales de WILIAM.",
-        "Se calculan TC, BIS y BISO intermedios. Se conservan los signos y se verifican los denominadores.",
+        "Se calculan TC, BIS y BISO intermedios con las tolerancias de la comparacion anterior: 1e-12 para TC y BIS, 1e-9 para BISO. Se conservan los signos.",
         "El codigo 25 se rotula metales basicos segun la correspondencia UNIZAR."))
   }
   if(isTRUE(k$bis_bounded)) {
@@ -1323,7 +1323,7 @@ run_unizar_delivery <- function(config) {
     Valor=c(max(abs(b48$Ventas_menos_X)),max(abs(b48$Costes_menos_X)),max(abs(b62$Ventas_menos_X)),max(abs(b62$Costes_menos_X)),
       sum(b48$Ventas_menos_X),sum(b48$Ventas_intermedias-b48$X>1e-6),sum(b62$Ventas_intermedias-b62$X>1e-6),
       sum(b48$Suma_A>1+1e-10),sum(b62$Suma_A>1+1e-10),y_error,va_error))
-  coefficients <- calculate_intermediate_coefficients(converted$Z,converted$X,labels)
+  coefficients <- calculate_intermediate_coefficients(converted$Z,converted$X,labels,tc_tol=1e-12,bis_tol=1e-12,biso_tol=1e-9)
   if (config$bis_acotado=="si") coefficients <- bound_bis(coefficients)
   cat("3/3 Exportando los controles y parametros intermedios...\n")
   controls <- write_intermediate_results(origin,converted,coefficients,mapping,files,config$salida)

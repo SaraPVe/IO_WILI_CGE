@@ -36,7 +36,9 @@ VA por región y sector padre.
 
 La salida incluye `Coeficientes_intermedios.xlsx` con TC, BIS y BISO
 intermedios y los balances de los dos niveles, y `MRIO62_entrega_UNIZAR.rds`
-con Z, X, VA e Y de 105 columnas. Para generar las tablas de demanda final
+con Z, X, VA e Y de 105 columnas. Se usan las mismas tolerancias de
+denominador que en el cierre anterior (1e-12 para TC y BIS y 1e-9 para
+BISO). Para generar las tablas de demanda final
 de WILIAM hay que confirmar con UNIZAR qué uso y destino corresponde a cada
 columna, y cómo están agrupados los seis usos del modelo.
 
