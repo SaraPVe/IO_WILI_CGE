@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from uuid import uuid4
 from zipfile import ZipFile
 from xml.sax.saxutils import escape
 
@@ -321,6 +322,18 @@ def integrate(coefficients, template, output, bis, biso, audit):
                     shutil.copyfileobj(original,updated,2**20)
 
 
+def publish_output(source, destination):
+    # Create the file beside its destination so it inherits the destination folder's permissions.
+    staging = destination.with_name(f'.{destination.name}.{uuid4().hex}.tmp')
+    temporary = staging.open('xb')
+    try:
+        with temporary, source.open('rb') as original:
+            shutil.copyfileobj(original, temporary, 2**20)
+        staging.replace(destination)
+    finally:
+        staging.unlink(missing_ok=True)
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mrio',type=Path,required=True)
@@ -340,7 +353,7 @@ def main():
             totals=[('Demanda final UNIZAR de tres usos',y.sum()),('Demanda final desglosada en seis usos',final.sum())]
             updated=scratch/args.coeficientes.name
             integrate(args.coeficientes,args.trade,updated,bis,biso,totals+allocation+controls)
-            updated.replace(args.coeficientes)
+            publish_output(updated, args.coeficientes)
         return
     args.salida.mkdir(parents=True,exist_ok=True)
     output=args.salida/'Trade.xlsx'
@@ -357,8 +370,8 @@ def main():
             writer=csv.writer(stream,delimiter=';')
             writer.writerow(['Control','Valor'])
             writer.writerows([('Demanda final UNIZAR de tres usos',y.sum()),('Demanda final desglosada en seis usos',final.sum()),*allocation,*controls])
-        (scratch/output.name).replace(output)
-        (scratch/audit.name).replace(audit)
+        publish_output(scratch/output.name, output)
+        publish_output(scratch/audit.name, audit)
     for row in allocation+controls:
         print(*row)
 
